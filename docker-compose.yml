@@ -1,0 +1,149 @@
+services:
+  # etcd 服务
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.10
+    container_name: distributed-task-scheduler-etcd
+    environment:
+      - ETCD_NAME=etcd-server
+      - ETCD_DATA_DIR=/etcd-data
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd:2380
+      - ETCD_INITIAL_CLUSTER=etcd-server=http://etcd:2380
+      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster-1
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd-data:/etcd-data
+    networks:
+      - task-scheduler-network
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # 调度器服务
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: distributed-task-scheduler-scheduler
+    command: >
+      /app/scheduler
+      --node-id=scheduler-1
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --strategy=round_robin
+      --log-level=info
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - task-scheduler-network
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+
+  # Worker 服务 - 实例 1
+  worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: distributed-task-scheduler-worker-1
+    command: >
+      /app/worker
+      --node-id=worker-1
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --max-concurrent=10
+      --log-level=info
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - task-scheduler-network
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+
+  # Worker 服务 - 实例 2
+  worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: distributed-task-scheduler-worker-2
+    command: >
+      /app/worker
+      --node-id=worker-2
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --max-concurrent=10
+      --log-level=info
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - task-scheduler-network
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+
+  # Worker 服务 - 实例 3（可选，可以根据需要调整数量）
+  worker-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: distributed-task-scheduler-worker-3
+    command: >
+      /app/worker
+      --node-id=worker-3
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --max-concurrent=10
+      --log-level=info
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - task-scheduler-network
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+
+  # 客户端服务（用于提交任务，不自动启动）
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: distributed-task-scheduler-client
+    command: >
+      /app/client
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --type=echo
+      --name=test-task
+      --priority=1
+      --count=1
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - task-scheduler-network
+    profiles:
+      - tools
+    environment:
+      - TZ=Asia/Shanghai
+
+volumes:
+  etcd-data:
+    driver: local
+
+networks:
+  task-scheduler-network:
+    driver: bridge
+

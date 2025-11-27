@@ -1,0 +1,37 @@
+# docker-compose.override.yml 示例文件
+# 复制此文件为 docker-compose.override.yml 来自定义配置
+# docker-compose 会自动读取 docker-compose.yml 和 docker-compose.override.yml
+
+services:
+  # 示例：扩展更多 worker 实例
+  worker-4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: distributed-task-scheduler-worker-4
+    command: >
+      /app/worker
+      --node-id=worker-4
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --max-concurrent=10
+      --log-level=info
+    depends_on:
+      etcd:
+        condition: service_healthy
+    networks:
+      - task-scheduler-network
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+
+  # 示例：修改调度器配置
+  scheduler:
+    command: >
+      /app/scheduler
+      --node-id=scheduler-1
+      --etcd-endpoints=etcd:2379
+      --queue=default
+      --strategy=least_load
+      --log-level=debug
+
